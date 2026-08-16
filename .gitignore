@@ -1,0 +1,10 @@
+# Compilación
+.build/
+build/
+
+# Herramientas de migración de un solo uso: llevan rutas y nombres personales
+herramientas_*.swift
+
+# macOS
+.DS_Store
+LÉEME.md
