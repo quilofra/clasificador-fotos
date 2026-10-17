@@ -10,7 +10,14 @@ echo "==> Compilando (release)…"
 swift build -c release
 
 echo "==> Icono…"
-python3 hacer_icono.py
+if python3 -c "import PIL" 2>/dev/null; then
+    python3 hacer_icono.py
+elif [ -f build/Clasificador.icns ]; then
+    echo "    (sin Pillow: reutilizo el icono ya generado)"
+else
+    echo "    falta Pillow y no hay icono. Instala con: pip3 install pillow"
+    exit 1
+fi
 
 echo "==> Armando el bundle…"
 rm -rf "build/$APP"

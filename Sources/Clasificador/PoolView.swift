@@ -72,7 +72,6 @@ struct PoolView: View {
                     .allowsHitTesting(false)
             }
         }
-        .overlay { if store.isScanning { scanOverlay } }
     }
 
     // MARK: - Zona de arrastre (pool vacío)
@@ -256,17 +255,6 @@ struct PoolView: View {
         }
         .font(.caption)
         .padding(.horizontal, 14).padding(.vertical, 7)
-    }
-
-    private var scanOverlay: some View {
-        VStack(spacing: 12) {
-            ProgressView(value: store.scanProgress > 0 ? store.scanProgress : nil)
-                .frame(width: 220)
-            Text(store.scanMessage).font(.callout).foregroundStyle(.secondary)
-        }
-        .padding(26)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
-        .shadow(radius: 20)
     }
 
     // MARK: - Drop

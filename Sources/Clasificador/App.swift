@@ -25,7 +25,7 @@ struct ClasificadorApp: App {
         .defaultSize(width: 1180, height: 800)
         .commands {
             CommandGroup(replacing: .undoRedo) {
-                Button("Deshacer clasificación") { store.undo() }
+                Button("Deshacer") { store.undo() }
                     .keyboardShortcut("z", modifiers: .command)
                     .disabled(!store.canUndo)
             }
@@ -53,11 +53,20 @@ func pickFiles() -> [URL] {
 
 // MARK: - Ventana principal
 
-enum Tab: Hashable { case pool, classify, summary }
+enum Tab: Hashable { case pool, classify, history, summary }
 
 struct ContentView: View {
     @EnvironmentObject var store: AppStore
-    @State private var tab: Tab = .pool
+    /// `CLASIFICADOR_PESTANA` (pool, clasificar, historial, resumen) solo lo usan
+    /// las pruebas, para abrir directamente en una pestaña sin tocar el ratón.
+    @State private var tab: Tab = {
+        switch ProcessInfo.processInfo.environment["CLASIFICADOR_PESTANA"] {
+        case "clasificar": return .classify
+        case "historial": return .history
+        case "resumen": return .summary
+        default: return .pool
+        }
+    }()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -67,12 +76,24 @@ struct ContentView: View {
                 switch tab {
                 case .pool: PoolView(tab: $tab)
                 case .classify: ClassifyView()
+                case .history: HistoryView()
                 case .summary: SummaryView()
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .background(Color(nsColor: .windowBackgroundColor))
+        // Encima de cualquier pestaña: al abrir puede estar recuperando fotos y
+        // hay que verlo estés donde estés.
+        .overlay { if store.isScanning { ProgresoOverlay() } }
+        .alert("Hecho", isPresented: Binding(
+            get: { store.aviso != nil && store.lastError == nil },
+            set: { if !$0 { store.aviso = nil } }
+        )) {
+            Button("Vale", role: .cancel) { store.aviso = nil }
+        } message: {
+            Text(store.aviso ?? "")
+        }
         .alert("Vaya", isPresented: Binding(
             get: { store.lastError != nil },
             set: { if !$0 { store.lastError = nil } }
@@ -257,6 +278,7 @@ struct TabBar: View {
             Divider().frame(height: 18).padding(.horizontal, 6)
             item(.pool, "Pool", "tray.full", badge: store.items.count)
             item(.classify, "Clasificar", "rectangle.stack", badge: store.pendingCount)
+            item(.history, "Historial", "clock.arrow.circlepath", badge: store.doneCount)
             item(.summary, "Resumen", "chart.bar", badge: nil)
             Spacer()
             if store.canUndo {
@@ -267,7 +289,7 @@ struct TabBar: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
-                .help("Deshacer la última clasificación (⌘Z)")
+                .help("Deshacer lo último: la última que clasificaste o el último cambio (⌘Z)")
             }
         }
         .padding(.horizontal, 14)
@@ -297,5 +319,23 @@ struct TabBar: View {
             .foregroundStyle(tab == t ? Color.accentColor : Color.secondary)
         }
         .buttonStyle(.plain)
+    }
+}
+
+/// Barra de progreso de las tareas largas (añadir al pool, preparar Pendientes,
+/// recuperar fotos al abrir).
+struct ProgresoOverlay: View {
+    @EnvironmentObject var store: AppStore
+
+    var body: some View {
+        VStack(spacing: 12) {
+            ProgressView(value: store.scanProgress > 0 ? store.scanProgress : nil)
+                .frame(width: 240)
+            Text(store.scanMessage).font(.callout).foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .padding(26)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
+        .shadow(radius: 20)
     }
 }

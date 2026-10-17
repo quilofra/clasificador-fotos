@@ -253,13 +253,8 @@ struct SummaryView: View {
                             Thumb(item: item, size: 34)
                             Text(item.name).font(.caption).lineLimit(1)
                             Spacer()
-                            Button("Repescar") {
-                                if let i = store.items.firstIndex(where: { $0.id == item.id }) {
-                                    store.items[i].decision = nil
-                                    store.history.removeAll { $0.itemID == item.id }
-                                    store.save()
-                                }
-                            }
+                            Button("Repescar") { store.devolverAPendientes(item.id) }
+                                .help("Vuelve a Pendientes y se quita de Descartadas")
                             .buttonStyle(.link).font(.caption)
                             Button {
                                 NSWorkspace.shared.activateFileViewerSelecting([item.url])

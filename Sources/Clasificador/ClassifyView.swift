@@ -9,11 +9,12 @@ import SwiftUI
 /// pocas en memoria, incluida la siguiente, para que el paso sea instantáneo.
 actor DisplayImageLoader {
     static let shared = DisplayImageLoader()
-    private var cache: [URL: NSImage] = [:]
-    private var order: [URL] = []
+    private var cache: [String: NSImage] = [:]
+    private var order: [String] = []
 
     func image(for url: URL, maxPixel: CGFloat = 2400) -> NSImage? {
-        if let c = cache[url] { return c }
+        let clave = "\(Int(maxPixel))|\(url.path)"
+        if let c = cache[clave] { return c }
         guard let src = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
         let opts: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
@@ -23,8 +24,8 @@ actor DisplayImageLoader {
         guard let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, opts as CFDictionary)
         else { return nil }
         let img = NSImage(cgImage: cg, size: NSSize(width: cg.width, height: cg.height))
-        cache[url] = img
-        order.append(url)
+        cache[clave] = img
+        order.append(clave)
         if order.count > 6 { cache.removeValue(forKey: order.removeFirst()) }
         return img
     }
@@ -236,6 +237,7 @@ struct ClassifyView: View {
                         if showInfo { panelCompleto(item) }
                     }
                     Spacer()
+                    if let d = item.decision, let c = store.category(d) { avisoYaClasificada(c) }
                     if item.isDuplicate && !comparando { avisoDuplicado(item) }
                 }
                 .padding(14)
@@ -432,6 +434,19 @@ struct ClassifyView: View {
 
     // MARK: Avisos y paneles
 
+    /// Al volver atrás (⇧←) sobre una ya clasificada: dónde está y cómo cambiarla.
+    private func avisoYaClasificada(_ c: Category) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: c.symbol)
+            Text("Ya está en \(c.name)").font(.caption.weight(.bold))
+            Text("pulsa otra tecla para cambiarla").font(.caption2)
+        }
+        .padding(.horizontal, 11).padding(.vertical, 6)
+        .background(.ultraThinMaterial, in: Capsule())
+        .overlay(Capsule().strokeBorder(c.tint, lineWidth: 1.2))
+        .foregroundStyle(c.tint)
+    }
+
     private func avisoDuplicado(_ item: MediaItem) -> some View {
         HStack(spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")
@@ -595,6 +610,7 @@ struct ClassifyView: View {
         VStack(spacing: 8) {
             HStack(spacing: 10) {
                 ForEach(store.categories) { c in
+                    let esta = store.current?.decision == c.id
                     Button { apply(c.id) } label: {
                         HStack(spacing: 7) {
                             Text("\(store.tecla(de: c))")
@@ -606,8 +622,9 @@ struct ClassifyView: View {
                         }
                         .padding(.horizontal, 14).padding(.vertical, 9)
                         .frame(maxWidth: .infinity)
-                        .background(RoundedRectangle(cornerRadius: 10).fill(c.tint.opacity(0.14)))
-                        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(c.tint.opacity(0.45)))
+                        .background(RoundedRectangle(cornerRadius: 10).fill(c.tint.opacity(esta ? 0.32 : 0.14)))
+                        .overlay(RoundedRectangle(cornerRadius: 10)
+                            .strokeBorder(c.tint.opacity(esta ? 0.95 : 0.45), lineWidth: esta ? 2 : 1))
                         .foregroundStyle(c.tint)
                     }
                     .buttonStyle(.plain)
@@ -624,6 +641,7 @@ struct ClassifyView: View {
                 hintLabel("F", "pantalla completa")
                 hintLabel("I", "datos")
                 hintLabel("⌘Z", "deshacer")
+                hintLabel("⇧←", "volver y cambiar")
                 Spacer()
                 hintLabel("⇧←/→", "moverse sin clasificar")
             }
@@ -725,29 +743,57 @@ struct ClassifyView: View {
 
 // MARK: - Reproductor de vídeo en bucle
 
-struct VideoPane: View {
+/// `AVPlayerView` de AppKit a pelo, no el `VideoPlayer` de SwiftUI: aquel vive
+/// en `_AVKit_SwiftUI` y fue el que tumbó la app el 9-oct (no encontraba la
+/// clase `AVPlayerView`). Así hay una pieza menos que pueda fallar, y el bucle
+/// lo lleva `AVPlayerLooper`, sin observadores que se quedaban colgados
+/// (antes cada vídeo visto dejaba su reproductor vivo en memoria).
+struct VideoPane: NSViewRepresentable {
     let url: URL
     let muted: Bool
 
-    @State private var player: AVPlayer?
+    func makeCoordinator() -> Coordinador { Coordinador() }
 
-    var body: some View {
-        VideoPlayer(player: player)
-            .onAppear {
-                let p = AVPlayer(url: url)
-                p.isMuted = muted
-                p.actionAtItemEnd = .none
-                NotificationCenter.default.addObserver(
-                    forName: .AVPlayerItemDidPlayToEndTime,
-                    object: p.currentItem, queue: .main
-                ) { _ in
-                    p.seek(to: .zero)
-                    p.play()
-                }
-                player = p
-                p.play()
-            }
-            .onDisappear { player?.pause(); player = nil }
-            .onChange(of: muted) { _, new in player?.isMuted = new }
+    func makeNSView(context: Context) -> AVPlayerView {
+        let v = AVPlayerView()
+        v.controlsStyle = .floating
+        v.videoGravity = .resizeAspect
+        v.showsFullScreenToggleButton = false
+        context.coordinator.cargar(url, muted: muted, en: v)
+        return v
+    }
+
+    func updateNSView(_ v: AVPlayerView, context: Context) {
+        if context.coordinator.url != url {
+            context.coordinator.cargar(url, muted: muted, en: v)
+        }
+        v.player?.isMuted = muted
+    }
+
+    static func dismantleNSView(_ v: AVPlayerView, coordinator: Coordinador) {
+        coordinator.parar(v)
+    }
+
+    final class Coordinador {
+        var url: URL?
+        private var looper: AVPlayerLooper?
+
+        func cargar(_ url: URL, muted: Bool, en v: AVPlayerView) {
+            parar(v)
+            let jugador = AVQueuePlayer()
+            looper = AVPlayerLooper(player: jugador, templateItem: AVPlayerItem(url: url))
+            jugador.isMuted = muted
+            v.player = jugador
+            jugador.play()
+            self.url = url
+        }
+
+        func parar(_ v: AVPlayerView) {
+            v.player?.pause()
+            looper?.disableLooping()
+            looper = nil
+            v.player = nil
+            url = nil
+        }
     }
 }

@@ -8,7 +8,8 @@ App nativa de macOS (SwiftUI) para repartir montones de fotos y vídeos entre ca
 
 1. **Pool** — arrastra ahí fotos, vídeos o carpetas enteras. Se acumulan en una lista única.
 2. **Clasificar** — te las enseña una a una a pantalla completa y decides con una tecla.
-3. **Resumen** — sesiones, reparto por categoría, carpeta destino y las descartadas.
+3. **Historial** — todo lo que llevas clasificado, lo último primero. Si te equivocaste, eliges la foto y la cambias de categoría (o la devuelves a pendientes).
+4. **Resumen** — sesiones, reparto por categoría, carpeta destino y las descartadas.
 
 ## Sesiones
 
@@ -16,7 +17,7 @@ Cada sesión es un **pool independiente**, con sus fotos, sus decisiones, su his
 
 - **Nueva sesión** con `⌘N`. Hereda la carpeta destino de la actual y eliges qué clasificaciones tendrá.
 - **Cambiar de sesión** guarda la actual automáticamente.
-- **Duplicar** copia pool y decisiones a una sesión nueva, sin tocar el disco.
+- **Duplicar** copia pool y decisiones a una sesión nueva y clona su carpeta de fotos (clon APFS: instantáneo y sin ocupar disco), para que cada sesión sea dueña de sus archivos.
 - **Eliminar** borra solo la sesión; ni originales ni copias ya hechas se tocan.
 
 ## Clasificaciones
@@ -43,7 +44,8 @@ Se cambian en `Models.swift`, en `Category.defaults`: nombre, subcarpetas destin
 | `1` … `N` | clasificar (según la posición en esta sesión) |
 | `←` `→` `↑` `↓` | lo mismo que 1 / 2 / 3 / 4 |
 | deslizar | izquierda 1 · derecha 2 · arriba 3 · abajo 4 |
-| `⌘Z` | deshacer la última |
+| `⌘Z` | deshacer lo último: la última clasificada o el último cambio de categoría |
+| `⇧←` y otra tecla | volver a una ya clasificada y cambiarla |
 | `R` / `⇧R` | girar a la derecha / izquierda |
 | `+` `−` `0` | acercar · alejar · ajustar |
 | `F` | pantalla completa |
@@ -97,6 +99,7 @@ Sources/Clasificador/
 ├── Thumbnail.swift    miniaturas con caché
 ├── PoolView.swift     pestaña Pool
 ├── ClassifyView.swift pestaña Clasificar
+├── HistoryView.swift  pestaña Historial
 └── SummaryView.swift  pestaña Resumen
 ```
 

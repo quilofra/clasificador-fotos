@@ -7,20 +7,23 @@ import SwiftUI
 /// sin decodificarla entera: imprescindible para un pool de decenas de miles.
 actor ThumbnailCache {
     static let shared = ThumbnailCache()
-    private var cache: [URL: NSImage] = [:]
-    private var order: [URL] = []
+    // La clave lleva el tamaño: una miniatura hecha para la tira (46 px) se
+    // vería borrosa reaprovechada en el Historial (104 px).
+    private var cache: [String: NSImage] = [:]
+    private var order: [String] = []
     private let limit = 800
 
     func image(for url: URL, kind: MediaKind, size: CGFloat) -> NSImage? {
-        if let c = cache[url] { return c }
+        let clave = "\(Int(size))|\(url.path)"
+        if let c = cache[clave] { return c }
         let img: NSImage?
         switch kind {
         case .image: img = Self.imageThumb(url, size)
         case .video: img = Self.videoThumb(url, size)
         }
         if let img {
-            cache[url] = img
-            order.append(url)
+            cache[clave] = img
+            order.append(clave)
             if order.count > limit {
                 let drop = order.removeFirst()
                 cache.removeValue(forKey: drop)

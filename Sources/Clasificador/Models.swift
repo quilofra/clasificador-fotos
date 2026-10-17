@@ -22,6 +22,10 @@ enum Rutas {
 
     /// Subcarpeta con lo que aún no has clasificado.
     static let pendientes = "Pendientes"
+
+    /// La misma ruta escrita siempre igual (enlaces simbólicos resueltos), para
+    /// poder comparar rutas sin que un mismo archivo parezca dos.
+    static func normal(_ u: URL) -> URL { u.resolvingSymlinksInPath().standardizedFileURL }
 }
 
 // MARK: - Categorías
@@ -120,6 +124,8 @@ struct MediaItem: Identifiable, Codable, Hashable {
 }
 
 /// Una decisión ya aplicada, con los archivos que se crearon, para poder deshacer.
+/// Hay UNA por elemento clasificado: si cambias de opinión se actualiza la misma,
+/// así que el historial es también la lista de lo que llevas clasificado.
 struct Decision: Codable {
     var itemID: UUID
     var itemIndex: Int
@@ -129,6 +135,19 @@ struct Decision: Codable {
     /// para poder devolverla al deshacer. Opcional: las decisiones guardadas
     /// antes de que existiera «Pendientes» no la traen.
     var pendienteBorrada: URL?
+
+    // Opcionales a propósito, como en `MediaItem`: las decisiones guardadas
+    // antes de existir estos campos se siguen leyendo sin romperse.
+
+    /// Cuándo se clasificó por primera vez.
+    var fecha: Date?
+    /// Si se cambió de categoría, las que tuvo antes, la última al final (cada
+    /// ⌘Z deshace un cambio), y cuándo se cambió por última vez.
+    var anteriores: [Int]?
+    var cambiada: Date?
+
+    /// Lo último que se le hizo: es lo que deshace ⌘Z.
+    var ultimoCambio: Date { cambiada ?? fecha ?? .distantPast }
 }
 
 // MARK: - Estado persistido
